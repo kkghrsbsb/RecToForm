@@ -1,15 +1,12 @@
-from typing import List
-from queue import Queue
+# 每个用户存储上传文件夹的信息
+user_uploaded_folders = {}
 
-#包含所属文件夹名, 文件名, 状态
-uploaded_folder = {}
+# 每个用户当前上传的文件夹名
+user_current_folder = {}
 
-#文件夹队列(用于上传)
-upload_folder_queue: Queue = Queue()
+# 每个用户的下载队列
+user_download_queues = {}
 
-#文件夹队列(用于下载)
-download_folder_queue: Queue = Queue()
-
-#host, port
-host = "10.100.1.202"
+# host, port
+host = "127.0.0.1"
 port = 56112

@@ -1,3 +1,10 @@
+// 获取/生成 user_id
+function getUserId() {
+    return 'u_' + Math.random().toString(36).slice(2, 10);
+}
+
+const userId = getUserId();
+
 const fileInput = document.getElementById('fileInput');
 const uploadSuccessMessage = document.getElementById('uploadSuccessMessage');
 const uploadButton = document.getElementById('uploadButton');
@@ -45,7 +52,6 @@ function addMessageSuccess(text, type = 'success') {
     });
 }
 
-
 function scrollToBottom() {
     const lastMessage = messages.lastElementChild;
     if (lastMessage) {
@@ -77,7 +83,7 @@ async function uploadFiles(files) {
     files.forEach(f => formData.append('files', f));
 
     try {
-        const response = await fetch('http://10.100.1.202:56112/upload', {
+        const response = await fetch(`http://127.0.0.1:56112/upload?user_id=${encodeURIComponent(userId)}`, {
             method: 'POST',
             body: formData
         });
@@ -90,7 +96,6 @@ async function uploadFiles(files) {
             } catch (e) {
                 errorDetail = await response.text();
             }
-            // 400错误显示为红色
             addMessage(errorDetail, response.status === 400 ? 'error' : 'normal');
             return;
         }
@@ -109,11 +114,9 @@ function startWebSocket() {
 
     if (websocket?.readyState === WebSocket.OPEN) return;
 
-    // 添加"制表中"动画效果
     analyzeButton.innerHTML = '<span class="analyzing">制表中<span class="dots">...</span></span>';
     analyzeButton.disabled = true;
 
-    // 创建CSS动画
     const style = document.createElement('style');
     style.textContent = `
         @keyframes dotPulse {
@@ -136,11 +139,10 @@ function startWebSocket() {
     `;
     document.head.appendChild(style);
 
-    // 将...转换为3个span以便单独动画
     const dots = analyzeButton.querySelector('.dots');
     dots.innerHTML = '<span>.</span><span>.</span><span>.</span>';
 
-    websocket = new WebSocket("ws://10.100.1.202:56112/analyze");
+    websocket = new WebSocket(`ws://127.0.0.1:56112/analyze?user_id=${encodeURIComponent(userId)}`);
 
     websocket.onopen = () => {
         console.log("WebSocket连接已建立");
@@ -153,12 +155,17 @@ function startWebSocket() {
         if (message.includes('表格下载链接:')) {
             progress = 100;
             updateProgressBar(progress);
-            downloadUrl = message.split('表格下载链接:')[1].trim();
+            // 解析下载链接并带上 user_id
+            const urlMatch = message.match(/表格下载链接:\s*(.*)/);
+            if (urlMatch) {
+                downloadUrl = urlMatch[1].trim();
+            } else {
+                downloadUrl = `http://127.0.0.1:56112/download?user_id=${encodeURIComponent(userId)}`;
+            }
             step = 'download';
             updateButtonStates();
             addMessageSuccess("分析完成，点击“下载表格”，获得Excel文件");
 
-            // 恢复按钮文本
             analyzeButton.innerHTML = '开始制表';
             return;
         }
@@ -170,7 +177,6 @@ function startWebSocket() {
 
     websocket.onclose = () => {
         console.log("WebSocket连接已关闭");
-        // 恢复按钮文本
         analyzeButton.innerHTML = '开始制表';
     };
 
@@ -189,16 +195,18 @@ function startWebSocket() {
     };
 }
 
+analyzeButton.addEventListener('click', () => {
+    startWebSocket();
+});
+
 downloadButton.addEventListener('click', () => {
     if (step === 'download' && downloadUrl) {
         window.open(downloadUrl, '_blank');
-        // 下载后重置状态，开始新的循环
         resetState();
     }
 });
 
 function resetState() {
-    // 重置所有状态
     progress = 0;
     downloadUrl = null;
     step = 'upload';
@@ -219,7 +227,6 @@ function showUploadSuccess() {
     }, 3000);
 }
 
-// 初始化
 document.addEventListener('DOMContentLoaded', () => {
     messagesObserver.observe(messages, { childList: true });
 

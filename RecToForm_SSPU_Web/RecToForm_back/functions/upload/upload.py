@@ -1,9 +1,9 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from typing import List
 import os
 from datetime import datetime
 import uuid
-from functions.shared.task_store import uploaded_folder, upload_folder_queue
+from functions.shared.task_store import user_uploaded_folders, user_current_folder
 import pyclamd
 
 upload = APIRouter()
@@ -33,11 +33,11 @@ except Exception:
     cd = None
 
 @upload.post('/upload')
-async def upload_file(files: List[UploadFile] = File(...)):
+async def upload_file(files: List[UploadFile] = File(...),
+                      user_id: str = Query(...)):
     # 限制最多上传 50 个文件
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="一次最多只能上传 50 个文件")
-
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder_name = f"{timestamp}_{uuid.uuid4().hex[:6]}"
@@ -82,11 +82,13 @@ async def upload_file(files: List[UploadFile] = File(...)):
         }
         folder_files_info.append(file_inf)
 
-    # 更新 uploaded_folder，按文件夹名存储文件信息列表
-    uploaded_folder[folder_name] = folder_files_info
+    # 每个用户独立存储上传信息
+    if user_id not in user_uploaded_folders:
+        user_uploaded_folders[user_id] = {}
+    user_uploaded_folders[user_id][folder_name] = folder_files_info
 
-    # 将文件夹名称加入队列
-    upload_folder_queue.put(folder_name)
+    # 记录当前用户最新上传的文件夹
+    user_current_folder[user_id] = folder_name
 
     return {
         "message": "上传完成",

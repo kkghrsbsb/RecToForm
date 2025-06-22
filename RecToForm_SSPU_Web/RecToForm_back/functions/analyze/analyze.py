@@ -1,18 +1,24 @@
 import os
 import shutil
-
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, Query
 import asyncio
 from starlette.websockets import WebSocketState
 from functions.RecToForm_SSPU_Web import RecToForm
-from functions.shared.task_store import upload_folder_queue, download_folder_queue
-
-from functions.shared.task_store import host, port
+from functions.shared.task_store import user_current_folder, user_download_queues, host, port
 
 analyze = APIRouter()
+analyzing_users = set()  # 记录正在分析的用户
 
 @analyze.websocket("/analyze")
-async def analyze_websocket(websocket: WebSocket):
+async def analyze_websocket(websocket: WebSocket, user_id: str = Query(...)):
+    # 防止同一用户并发分析
+    if user_id in analyzing_users:
+        await websocket.accept()
+        await websocket.send_text("该用户正在分析中，请勿重复操作")
+        await websocket.close()
+        return
+    analyzing_users.add(user_id)
+
     await websocket.accept()
     loop = asyncio.get_event_loop()
     queue = asyncio.Queue()
@@ -36,11 +42,14 @@ async def analyze_websocket(websocket: WebSocket):
     try:
         sender_task = asyncio.create_task(log_sender())
 
-        #创建下载文件夹
-        folder_name = upload_folder_queue.get()
-        os.makedirs(f"functions/download/downloading_files/{folder_name}")
+        # 检查用户当前上传文件夹
+        if user_id not in user_current_folder:
+            await queue.put("无可分析任务")
+            return
 
-        # 初始化处理器
+        folder_name = user_current_folder[user_id]
+        os.makedirs(f"functions/download/downloading_files/{folder_name}", exist_ok=True)
+
         processor = RecToForm(
             in_path=f'functions/upload/uploaded_files/{folder_name}',
             out_path=f'functions/download/downloading_files/{folder_name}/发票信息.xlsx',
@@ -51,13 +60,10 @@ async def analyze_websocket(websocket: WebSocket):
             log_back=log_callback
         )
 
-        #提示信息
         await queue.put("作者：Yunxi_Zhu")
         await queue.put("邮箱：20241130160@sspu.edu.cn")
         await queue.put("----------------发票信息自助填表---------------")
 
-
-        # 文件处理流程
         await queue.put("开始读取发票文件...")
         await asyncio.to_thread(processor.getfile)
         await queue.put(f"发现{len(processor.pdf_names)}份发票文件")
@@ -70,17 +76,25 @@ async def analyze_websocket(websocket: WebSocket):
 
         await queue.put("所有任务全部处理完成")
 
-        #删除已完成的任务节点
+        # 删除已完成的任务节点
         if os.path.exists(f"functions/upload/uploaded_files/{folder_name}"):
             shutil.rmtree(f"functions/upload/uploaded_files/{folder_name}")
-        download_folder_queue.put(folder_name)
-        upload_folder_queue.queue.clear()
 
-        await queue.put(f"表格下载链接: http://{host}:{port}/download?folder_name={folder_name}")
+        # 放入该用户的下载队列
+        if user_id not in user_download_queues:
+            from queue import Queue
+            user_download_queues[user_id] = Queue()
+        user_download_queues[user_id].put(folder_name)
+
+        await queue.put(f"表格下载链接: http://{host}:{port}/download?user_id={user_id}")
+
+        # 分析完成后移除当前任务
+        del user_current_folder[user_id]
 
     except Exception as e:
         await queue.put(f"处理出错: {str(e)}")
     finally:
+        analyzing_users.discard(user_id)
         await queue.join()
         if sender_task and not sender_task.done():
             sender_task.cancel()
