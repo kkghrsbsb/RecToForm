@@ -145,7 +145,7 @@ def hint():
 if __name__ == "__main__":
     in_path = r'发票'
     out_path = r'发票信息.xlsx'
-    api_key = "your_api_key"
+    api_key = "skCWkPIiNpDfa63980P1zqcud8"
     base_url = "https://ds.sspu.edu.cn/api/v1/chat/completions"
     message = "分析下列的发票文件，提取发票代码、发票号码、发票金额这些信息。只需要发票代码、发票号码、发票金额（价税合计中的小写金额），注意：发票代码（一定是该关键字，不要误判）与发票号码不一样，若没有数据，则将发票代码字段填入与发票号码一样的值(也是字符串)；同时，如果是乱码，请转换为可读格式；所有信息均是字符串，用双引号包裹；最后以python字典返回（只需要字典，其余多余字符串不需要）\n"
     max_threads = 10
